@@ -37,7 +37,7 @@
         text: msg,
         duration: 3000,
         gravity: 'top',
-        position: 'right',
+        position: 'center',
         backgroundColor: type === 'success' ? '#4f46e5' : '#ef4444',
         stopOnFocus: true,
       }).showToast();
@@ -50,9 +50,13 @@
       const [newStudentName, setNewStudentName] = useState('');
       const [showStudentModal, setShowStudentModal] = useState(false);
       const [showLessonModal, setShowLessonModal] = useState(false);
+      const [addStudentLoading, setAddStudentLoading] = useState(false);
+      const [addLessonLoading, setAddLessonLoading] = useState(false);
       const [newLesson, setNewLesson] = useState({
         studentId: '',
         date: new Date().toISOString().split('T')[0],
+        startTime: '',
+        endTime: '',
         amount: '',
         topic: '',
         performance: '',
@@ -66,6 +70,10 @@
         return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
       });
       const months = Array.from(new Set(lessons.map(lesson => lesson.date.slice(0, 7)))).sort().reverse();
+      const [mobileNavOpen, setMobileNavOpen] = useState(false);
+      const [studentLessonsModal, setStudentLessonsModal] = useState({ open: false, student: null });
+      const lessonsRef = React.useRef(null);
+      const [lessonSearch, setLessonSearch] = useState('');
   
       useEffect(() => {
         fetch('https://repetitorstvo-utility.onrender.com/api/students')
@@ -79,7 +87,9 @@
       }, []);
   
       const addStudent = () => {
+        if (addStudentLoading) return;
         if (newStudentName && newStudentName.trim()) {
+          setAddStudentLoading(true);
           const newStudent = { name: newStudentName.trim() };
           fetch('https://repetitorstvo-utility.onrender.com/api/students', {
             method: 'POST',
@@ -101,7 +111,8 @@
           .catch(error => {
             console.error('Error adding student:', error);
             showToast(error.error || 'Ошибка при добавлении ученика', 'error');
-          });
+          })
+          .finally(() => setAddStudentLoading(false));
         }
       };
   
@@ -126,8 +137,26 @@
       };
   
       const addLesson = () => {
+        if (addLessonLoading) return;
         if (newLesson.studentId && newLesson.date && newLesson.amount) {
-          const newLessonEntry = { ...newLesson };
+          setAddLessonLoading(true);
+          const student = students.find(s => s._id === newLesson.studentId);
+          let duration = '';
+          if (newLesson.startTime && newLesson.endTime) {
+            const [sh, sm] = newLesson.startTime.split(':').map(Number);
+            const [eh, em] = newLesson.endTime.split(':').map(Number);
+            let mins = (eh * 60 + em) - (sh * 60 + sm);
+            if (mins < 0) mins += 24 * 60;
+            const h = Math.floor(mins / 60);
+            const m = mins % 60;
+            duration = (h ? h + ' ч ' : '') + (m ? m + ' мин' : (h ? '' : '0 мин'));
+          }
+          const newLessonEntry = { 
+            ...newLesson, 
+            studentId: student ? student._id : '', 
+            studentName: student ? student.name : '', 
+            duration 
+          };
           fetch('https://repetitorstvo-utility.onrender.com/api/lessons', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -145,6 +174,8 @@
             setNewLesson({
               studentId: '',
               date: new Date().toISOString().split('T')[0],
+              startTime: '',
+              endTime: '',
               amount: '',
               topic: '',
               performance: '',
@@ -156,7 +187,8 @@
           .catch(error => {
             console.error('Error adding lesson:', error);
             showToast(error.error || 'Ошибка при добавлении занятия', 'error');
-          });
+          })
+          .finally(() => setAddLessonLoading(false));
         } else {
           showToast('Заполните все обязательные поля', 'error');
         }
@@ -209,19 +241,50 @@
         showToast('Экспортировано в Excel!');
       };
   
+      function normalizeDate(str) {
+        return str.replace(/\./g, '-').replace(/(\d{2})-(\d{2})-(\d{2,4})/, (m, d, mth, y) => {
+          if (y.length === 2) y = '20' + y;
+          return `${y}-${mth.padStart(2, '0')}-${d.padStart(2, '0')}`;
+        });
+      }
+  
+      const filteredLessons = lessons.filter(lesson => {
+        if (!lessonSearch.trim()) return true;
+        const q = lessonSearch.trim().toLowerCase();
+        if (lesson.studentName && lesson.studentName.toLowerCase().includes(q)) return true;
+        const dateVariants = [lesson.date, normalizeDate(lesson.date)];
+        return dateVariants.some(d => d.includes(q) || d.replace(/-/g, '.') === q || d.replace(/-/g, '') === q);
+      });
+  
       // --- UI ---
       return (
         <div className="min-h-screen bg-gray-100">
           {/* Top Bar */}
-          <header className="bg-indigo-600 shadow py-4 mb-6">
-            <div className="container mx-auto px-4 flex justify-between items-center">
-              <h1 className="text-2xl md:text-3xl font-bold text-white tracking-wide">Приложение для репетитора</h1>
-              <nav className="flex space-x-2">
-                <button onClick={() => setCurrentTab('students')} className={`px-4 py-2 rounded-lg font-medium transition ${currentTab==='students' ? 'bg-white text-indigo-600 shadow' : 'text-white hover:bg-indigo-500'}`}>Ученики</button>
-                <button onClick={() => setCurrentTab('lessons')} className={`px-4 py-2 rounded-lg font-medium transition ${currentTab==='lessons' ? 'bg-white text-indigo-600 shadow' : 'text-white hover:bg-indigo-500'}`}>Занятия</button>
-                <button onClick={() => setCurrentTab('stats')} className={`px-4 py-2 rounded-lg font-medium transition ${currentTab==='stats' ? 'bg-white text-indigo-600 shadow' : 'text-white hover:bg-indigo-500'}`}>Статистика</button>
+          <header className="bg-indigo-600 shadow py-2 sm:py-4 mb-4 sm:mb-6">
+            <div className="container mx-auto px-2 sm:px-4 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 relative">
+              <div className="flex items-center justify-between w-full sm:w-auto">
+                <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-white tracking-wide text-center sm:text-left">Приложение для репетитора</h1>
+                <button className="sm:hidden ml-2 p-2 text-white" onClick={() => setMobileNavOpen(v => !v)}>
+                  <svg width="28" height="28" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 8h20M4 16h20"/></svg>
+                </button>
+              </div>
+              <nav className="hidden sm:flex flex-row gap-2 justify-center">
+                <button onClick={() => setCurrentTab('students')} className={`px-3 py-1 sm:px-4 sm:py-2 rounded-lg font-medium transition text-sm sm:text-base ${currentTab==='students' ? 'bg-white text-indigo-600 shadow' : 'text-white hover:bg-indigo-500'}`}>Ученики</button>
+                <button onClick={() => setCurrentTab('lessons')} className={`px-3 py-1 sm:px-4 sm:py-2 rounded-lg font-medium transition text-sm sm:text-base ${currentTab==='lessons' ? 'bg-white text-indigo-600 shadow' : 'text-white hover:bg-indigo-500'}`}>Занятия</button>
+                <button onClick={() => setCurrentTab('stats')} className={`px-3 py-1 sm:px-4 sm:py-2 rounded-lg font-medium transition text-sm sm:text-base ${currentTab==='stats' ? 'bg-white text-indigo-600 shadow' : 'text-white hover:bg-indigo-500'}`}>Статистика</button>
               </nav>
-          </div>
+              {/* Мобильное меню */}
+              {mobileNavOpen && (
+                <>
+                  <div className="fixed inset-0 bg-black bg-opacity-40 z-40" onClick={() => setMobileNavOpen(false)}></div>
+                  <div className="fixed top-0 left-0 w-2/3 h-full bg-white z-50 shadow-lg flex flex-col p-4 gap-4 animate-slide-in">
+                    <button onClick={() => { setCurrentTab('students'); setMobileNavOpen(false); }} className={`text-left px-2 py-2 rounded ${currentTab==='students' ? 'bg-indigo-100 text-indigo-700' : 'text-indigo-700 hover:bg-indigo-50'}`}>Ученики</button>
+                    <button onClick={() => { setCurrentTab('lessons'); setMobileNavOpen(false); }} className={`text-left px-2 py-2 rounded ${currentTab==='lessons' ? 'bg-indigo-100 text-indigo-700' : 'text-indigo-700 hover:bg-indigo-50'}`}>Занятия</button>
+                    <button onClick={() => { setCurrentTab('stats'); setMobileNavOpen(false); }} className={`text-left px-2 py-2 rounded ${currentTab==='stats' ? 'bg-indigo-100 text-indigo-700' : 'text-indigo-700 hover:bg-indigo-50'}`}>Статистика</button>
+                  </div>
+                </>
+              )}
+            </div>
           </header>
   
           <main className="container mx-auto px-4">
@@ -237,9 +300,9 @@
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {filteredStudents.map(student => (
-                      <div key={student._id} className="bg-white rounded-xl shadow p-4 flex justify-between items-center">
+                      <div key={student._id} className="bg-white rounded-xl shadow p-4 flex justify-between items-center cursor-pointer" onClick={() => setStudentLessonsModal({ open: true, student })}>
                         <span className="font-semibold text-lg text-gray-800">{student.name}</span>
-                        <button onClick={() => setConfirmDelete({ type: 'student', id: student._id })} className="p-2 rounded hover:bg-red-100 text-red-500"><TrashIcon /></button>
+                        <button onClick={e => { e.stopPropagation(); setConfirmDelete({ type: 'student', id: student._id }); }} className="p-2 rounded hover:bg-red-100 text-red-500"><TrashIcon /></button>
                     </div>
                 ))}
                   </div>
@@ -251,46 +314,67 @@
           {currentTab === 'lessons' && (
             <div>
                 <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-6 gap-2">
+                  <input type="text" value={lessonSearch} onChange={e => setLessonSearch(e.target.value)} placeholder="Поиск по дате или имени..." className="border rounded-lg px-4 py-2 w-full md:w-1/3 shadow-sm focus:ring-2 focus:ring-indigo-300" />
                   <button onClick={() => setShowLessonModal(true)} className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg shadow transition"><PlusIcon />Добавить занятие</button>
               </div>
-                {lessons.length === 0 ? (
+                {filteredLessons.length === 0 ? (
                   <div className="text-center text-gray-400 py-12">Нет занятий</div>
                 ) : (
-                  <div className="overflow-x-auto rounded-xl shadow bg-white">
-                    <table className="min-w-full text-sm">
-                      <thead className="bg-gray-50">
-                        <tr>
-                          <th className="py-3 px-4 text-left">Ученик</th>
-                          <th className="py-3 px-4 text-left">Дата</th>
-                          <th className="py-3 px-4 text-left">Сумма (BYN)</th>
-                          <th className="py-3 px-4 text-left">Тема</th>
-                          <th className="py-3 px-4 text-left">Усвоение</th>
-                          <th className="py-3 px-4 text-left">Задания</th>
-                          <th className="py-3 px-4 text-left">Домашнее задание</th>
-                          <th className="py-3 px-4 text-left">Действия</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {lessons.map(lesson => {
-                      const student = students.find(s => s._id === lesson.studentId);
-                      return (
+                  <>
+                    {/* Мобильные карточки занятий */}
+                    <div className="sm:hidden space-y-4">
+                      {filteredLessons.map(lesson => (
+                        <div key={lesson._id} id={'lesson-' + lesson._id} className="bg-white rounded-xl shadow p-4 flex flex-col gap-2">
+                          <div><span className="font-semibold">Ученик:</span> {lesson.studentName || 'Неизвестно'}</div>
+                          <div><span className="font-semibold">Дата:</span> {lesson.date}</div>
+                          <div><span className="font-semibold">Время:</span> {lesson.startTime && lesson.endTime ? `${lesson.startTime}–${lesson.endTime} (${lesson.duration})` : '—'}</div>
+                          <div><span className="font-semibold">Сумма:</span> {lesson.amount} BYN</div>
+                          <div><span className="font-semibold">Тема:</span> {lesson.topic}</div>
+                          <div><span className="font-semibold">Усвоение:</span> {lesson.performance}</div>
+                          <div><span className="font-semibold">Задания:</span> {lesson.tasks}</div>
+                          <div><span className="font-semibold">Домашнее задание:</span> {lesson.homework}</div>
+                          <button onClick={() => setConfirmDelete({ type: 'lesson', id: lesson._id })} className="mt-2 bg-red-500 hover:bg-red-700 text-white px-4 py-2 rounded">Удалить</button>
+                        </div>
+                      ))}
+                    </div>
+                    {/* Таблица занятий для десктопа */}
+                    <div className="hidden sm:block overflow-x-auto rounded-xl shadow bg-white">
+                      <table className="min-w-full text-sm">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="py-3 px-4 text-left">Ученик</th>
+                            <th className="py-3 px-4 text-left">Дата</th>
+                            <th className="py-3 px-4 text-left">Время</th>
+                            <th className="py-3 px-4 text-left">Длительность</th>
+                            <th className="py-3 px-4 text-left">Сумма (BYN)</th>
+                            <th className="py-3 px-4 text-left">Тема</th>
+                            <th className="py-3 px-4 text-left">Усвоение</th>
+                            <th className="py-3 px-4 text-left">Задания</th>
+                            <th className="py-3 px-4 text-left">Домашнее задание</th>
+                            <th className="py-3 px-4 text-left">Действия</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {filteredLessons.map(lesson => (
                             <tr key={lesson._id} className="even:bg-gray-50 hover:bg-indigo-50 transition">
-                              <td className="py-2 px-4">{student ? student.name : 'Неизвестно'}</td>
+                              <td className="py-2 px-4">{lesson.studentName || 'Неизвестно'}</td>
                               <td className="py-2 px-4">{lesson.date}</td>
+                              <td className="py-2 px-4">{lesson.startTime && lesson.endTime ? `${lesson.startTime}–${lesson.endTime} (${lesson.duration})` : '—'}</td>
+                              <td className="py-2 px-4">{lesson.duration || '—'}</td>
                               <td className="py-2 px-4">{lesson.amount}</td>
                               <td className="py-2 px-4">{lesson.topic}</td>
                               <td className="py-2 px-4">{lesson.performance}</td>
                               <td className="py-2 px-4">{lesson.tasks}</td>
                               <td className="py-2 px-4">{lesson.homework}</td>
-                          <td className="py-2 px-4">
+                              <td className="py-2 px-4">
                                 <button onClick={() => setConfirmDelete({ type: 'lesson', id: lesson._id })} className="p-2 rounded hover:bg-red-100 text-red-500"><TrashIcon /></button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
                 )}
             </div>
           )}
@@ -334,7 +418,7 @@
                 <button onClick={() => setShowStudentModal(false)} className="absolute top-2 right-2 text-gray-400 hover:text-gray-600">✕</button>
                 <h2 className="text-xl font-bold mb-4">Добавить ученика</h2>
                 <input type="text" value={newStudentName} onChange={e => setNewStudentName(e.target.value)} placeholder="Имя ученика" className="border rounded-lg px-4 py-2 w-full mb-4 focus:ring-2 focus:ring-indigo-300" />
-                <button onClick={addStudent} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg shadow transition">Добавить</button>
+                <button onClick={addStudent} disabled={addStudentLoading} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg shadow transition disabled:opacity-50">{addStudentLoading ? 'Добавление...' : 'Добавить'}</button>
               </div>
             </div>
           )}
@@ -351,13 +435,15 @@
                     {students.map(student => <option key={student._id} value={student._id}>{student.name}</option>)}
                   </select>
                   <input type="date" value={newLesson.date} onChange={e => setNewLesson({ ...newLesson, date: e.target.value })} className="border rounded-lg px-4 py-2 w-full focus:ring-2 focus:ring-indigo-300" />
+                  <input type="time" value={newLesson.startTime} onChange={e => setNewLesson({ ...newLesson, startTime: e.target.value })} placeholder="Время начала" className="border rounded-lg px-4 py-2 w-full focus:ring-2 focus:ring-indigo-300" />
+                  <input type="time" value={newLesson.endTime} onChange={e => setNewLesson({ ...newLesson, endTime: e.target.value })} placeholder="Время конца" className="border rounded-lg px-4 py-2 w-full focus:ring-2 focus:ring-indigo-300" />
                   <input type="number" value={newLesson.amount} onChange={e => setNewLesson({ ...newLesson, amount: e.target.value })} placeholder="Сумма оплаты (BYN)" className="border rounded-lg px-4 py-2 w-full focus:ring-2 focus:ring-indigo-300" />
                   <input type="text" value={newLesson.topic} onChange={e => setNewLesson({ ...newLesson, topic: e.target.value })} placeholder="Тема урока" className="border rounded-lg px-4 py-2 w-full focus:ring-2 focus:ring-indigo-300" />
                   <input type="text" value={newLesson.performance} onChange={e => setNewLesson({ ...newLesson, performance: e.target.value })} placeholder="Результат усвоения" className="border rounded-lg px-4 py-2 w-full focus:ring-2 focus:ring-indigo-300" />
                   <input type="text" value={newLesson.tasks} onChange={e => setNewLesson({ ...newLesson, tasks: e.target.value })} placeholder="Подбор заданий" className="border rounded-lg px-4 py-2 w-full focus:ring-2 focus:ring-indigo-300" />
                   <input type="text" value={newLesson.homework} onChange={e => setNewLesson({ ...newLesson, homework: e.target.value })} placeholder="Домашнее задание" className="border rounded-lg px-4 py-2 w-full focus:ring-2 focus:ring-indigo-300" />
                 </div>
-                <button onClick={addLesson} className="w-full mt-6 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg shadow transition">Добавить занятие</button>
+                <button onClick={addLesson} disabled={addLessonLoading} className="w-full mt-6 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg shadow transition disabled:opacity-50">{addLessonLoading ? 'Добавление...' : 'Добавить занятие'}</button>
               </div>
             </div>
           )}
@@ -367,7 +453,7 @@
             <div className="fixed inset-0 flex items-center justify-center z-50 modal-bg">
               <div className="bg-white rounded-xl shadow-lg p-8 w-full max-w-sm relative text-center">
                 <h2 className="text-xl font-bold mb-4">Вы уверены?</h2>
-                <p className="mb-6">{confirmDelete.type === 'student' ? 'Удалить ученика и все его занятия?' : 'Удалить занятие?'}</p>
+                <p className="mb-6">{confirmDelete.type === 'student' ? 'Удалить ученика? Занятия останутся в системе.' : 'Удалить занятие?'}</p>
                 <div className="flex gap-4 justify-center">
                   <button onClick={() => {
                     if (confirmDelete.type === 'student') deleteStudent(confirmDelete.id);
@@ -375,6 +461,39 @@
                     setConfirmDelete({ type: '', id: null });
                   }} className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg shadow">Удалить</button>
                   <button onClick={() => setConfirmDelete({ type: '', id: null })} className="bg-gray-200 hover:bg-gray-300 text-gray-700 px-4 py-2 rounded-lg shadow">Отмена</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Модальное окно занятий ученика */}
+          {studentLessonsModal.open && (
+            <div className="fixed inset-0 flex items-center justify-center z-50 modal-bg">
+              <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-lg relative border-2 border-indigo-200">
+                <button onClick={() => setStudentLessonsModal({ open: false, student: null })} className="absolute top-2 right-2 text-gray-400 hover:text-gray-600 text-2xl">✕</button>
+                <h2 className="text-2xl font-bold mb-6 text-indigo-700 text-center">Занятия ученика: {studentLessonsModal.student.name}</h2>
+                <div className="space-y-4 max-h-96 overflow-y-auto">
+                  {lessons.filter(l => l.studentId === studentLessonsModal.student._id).length === 0 ? (
+                    <div className="text-gray-400 text-center">Нет занятий</div>
+                  ) : (
+                    lessons.filter(l => l.studentId === studentLessonsModal.student._id).map(lesson => (
+                      <div key={lesson._id} className="flex flex-col sm:flex-row sm:items-center justify-between bg-indigo-50 rounded-lg p-3 border border-indigo-200 shadow gap-2 sm:gap-0">
+                        <div className="flex-1">
+                          <div className="font-semibold text-indigo-900">{lesson.date}</div>
+                          <div className="text-sm text-gray-700">Время: {lesson.startTime && lesson.endTime ? `${lesson.startTime}–${lesson.endTime}` : '—'} {lesson.duration ? `(${lesson.duration})` : ''}</div>
+                          <div className="text-sm text-gray-700">Сумма: {lesson.amount} BYN</div>
+                        </div>
+                        <button className="text-indigo-600 underline text-sm font-semibold mt-2 sm:mt-0" onClick={() => {
+                          setCurrentTab('lessons');
+                          setStudentLessonsModal({ open: false, student: null });
+                          setTimeout(() => {
+                            const el = document.getElementById('lesson-' + lesson._id);
+                            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                          }, 200);
+                        }}>Перейти к занятию</button>
+                      </div>
+                    ))
+                  )}
                 </div>
               </div>
             </div>
