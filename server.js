@@ -6,11 +6,17 @@ const app = express();
 app.use(express.json());
 app.use(cors());
 
-mongoose.connect('mongodb+srv://zangranrosten:Zashibis_2015@repetitorstvo.9dg2twn.mongodb.net/?retryWrites=true&w=majority&appName=Repetitorstvo', {
+mongoose.connect('mongodb+srv://zangranrosten:Zashibis_2015@repetitorstvo.9dg2twn.mongodb.net/test?retryWrites=true&w=majority&appName=Repetitorstvo', {
     useNewUrlParser: true,
     useUnifiedTopology: true,
   })
-.then(() => console.log('Connected to MongoDB'))
+.then(() => {
+  console.log('Connected to MongoDB');
+  console.log('DB name:', mongoose.connection.name);
+  mongoose.connection.db.listCollections().toArray().then(cols => {
+    console.log('Collections:', cols.map(c => c.name));
+  });
+})
 .catch(err => console.error('MongoDB connection error:', err));
 
 const studentSchema = new mongoose.Schema({
@@ -54,11 +60,11 @@ app.post('/api/students', async (req, res) => {
 
 app.delete('/api/students/:id', async (req, res) => {
   try {
-    const result = await Student.findOneAndDelete({ id: req.params.id });
+    const result = await Student.findByIdAndDelete(req.params.id);
     if (!result) {
       return res.status(404).json({ error: 'Ученик не найден' });
     }
-    await Lesson.deleteMany({ studentId: req.params.id });
+    // await Lesson.deleteMany({ studentId: req.params.id }); // больше не удаляем занятия
     res.json({ message: 'Ученик удален' });
   } catch (error) {
     console.error('Error deleting student:', error);
@@ -87,7 +93,7 @@ app.post('/api/lessons', async (req, res) => {
 
 app.delete('/api/lessons/:id', async (req, res) => {
   try {
-    const result = await Lesson.findOneAndDelete({ id: req.params.id });
+    const result = await Lesson.findByIdAndDelete(req.params.id);
     if (!result) {
       return res.status(404).json({ error: 'Занятие не найдено' });
     }

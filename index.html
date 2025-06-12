@@ -42,7 +42,7 @@
         stopOnFocus: true,
       }).showToast();
     }
-
+  
     function App() {
       const [students, setStudents] = useState([]);
       const [lessons, setLessons] = useState([]);
@@ -61,7 +61,12 @@
       });
       const [searchQuery, setSearchQuery] = useState('');
       const [confirmDelete, setConfirmDelete] = useState({ type: '', id: null });
-
+      const [selectedMonth, setSelectedMonth] = useState(() => {
+        const now = new Date();
+        return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+      });
+      const months = Array.from(new Set(lessons.map(lesson => lesson.date.slice(0, 7)))).sort().reverse();
+  
       useEffect(() => {
         fetch('https://repetitorstvo-utility.onrender.com/api/students')
           .then(res => res.json())
@@ -72,7 +77,7 @@
           .then(setLessons)
           .catch(() => showToast('Ошибка загрузки занятий', 'error'));
       }, []);
-
+  
       const addStudent = () => {
         if (newStudentName && newStudentName.trim()) {
           const newStudent = { name: newStudentName.trim() };
@@ -82,7 +87,9 @@
             body: JSON.stringify(newStudent),
           })
           .then(res => {
-            if (!res.ok) return res.json().then(err => Promise.reject(err));
+            if (!res.ok) {
+              return res.json().then(err => Promise.reject(err));
+            }
             return res.json();
           })
           .then(data => {
@@ -92,32 +99,32 @@
             showToast('Ученик добавлен!');
           })
           .catch(error => {
+            console.error('Error adding student:', error);
             showToast(error.error || 'Ошибка при добавлении ученика', 'error');
           });
         }
       };
-
+  
       const deleteStudent = (studentId) => {
         fetch(`https://repetitorstvo-utility.onrender.com/api/students/${studentId}`, { method: 'DELETE' })
           .then(res => {
             if (!res.ok) return res.json().then(err => Promise.reject(err));
-            setStudents(prev => prev.filter(student => student.id !== studentId));
+            setStudents(prev => prev.filter(student => student._id !== studentId));
             setLessons(prev => prev.filter(lesson => lesson.studentId !== studentId));
             showToast('Ученик удалён!');
           })
           .catch(error => showToast(error.error || 'Ошибка при удалении ученика', 'error'));
       };
-
+  
       const deleteLesson = (lessonId) => {
         fetch(`https://repetitorstvo-utility.onrender.com/api/lessons/${lessonId}`, { method: 'DELETE' })
-          .then(res => {
-            if (!res.ok) return res.json().then(err => Promise.reject(err));
-            setLessons(prev => prev.filter(lesson => lesson.id !== lessonId));
+          .then(() => {
+            setLessons(prev => prev.filter(lesson => lesson._id !== lessonId));
             showToast('Занятие удалено!');
           })
           .catch(error => showToast(error.error || 'Ошибка при удалении занятия', 'error'));
       };
-
+  
       const addLesson = () => {
         if (newLesson.studentId && newLesson.date && newLesson.amount) {
           const newLessonEntry = { ...newLesson };
@@ -127,7 +134,9 @@
             body: JSON.stringify(newLessonEntry),
           })
           .then(res => {
-            if (!res.ok) return res.json().then(err => Promise.reject(err));
+            if (!res.ok) {
+              return res.json().then(err => Promise.reject(err));
+            }
             return res.json();
           })
           .then(data => {
@@ -144,16 +153,19 @@
             });
             showToast('Занятие добавлено!');
           })
-          .catch(error => showToast(error.error || 'Ошибка при добавлении занятия', 'error'));
+          .catch(error => {
+            console.error('Error adding lesson:', error);
+            showToast(error.error || 'Ошибка при добавлении занятия', 'error');
+          });
         } else {
           showToast('Заполните все обязательные поля', 'error');
         }
       };
-
+  
       const filteredStudents = students.filter(student =>
         student.name.toLowerCase().includes(searchQuery.toLowerCase())
       );
-
+  
       const calculateStats = (period) => {
         const now = new Date();
         let startDate;
@@ -166,11 +178,19 @@
         const tax = totalAmount * 0.04;
         return { lessonCount, totalAmount, tax };
       };
-
+  
+      const calculateMonthStats = (month) => {
+        const monthLessons = lessons.filter(lesson => lesson.date.startsWith(month));
+        const lessonCount = monthLessons.length;
+        const totalAmount = monthLessons.reduce((sum, lesson) => sum + Number(lesson.amount), 0);
+        const tax = totalAmount * 0.04;
+        return { lessonCount, totalAmount, tax };
+      };
+  
       const exportToExcel = () => {
         const wb = XLSX.utils.book_new();
         const wsData = lessons.map(lesson => {
-          const student = students.find(s => s.id === lesson.studentId) || { name: 'Неизвестно' };
+          const student = students.find(s => s._id === lesson.studentId) || { name: 'Неизвестно' };
           return {
             'Ученик': student.name,
             'Дата': lesson.date,
@@ -188,7 +208,7 @@
         saveAs(blob, 'tutor_lessons.xlsx');
         showToast('Экспортировано в Excel!');
       };
-
+  
       // --- UI ---
       return (
         <div className="min-h-screen bg-gray-100">
@@ -201,38 +221,38 @@
                 <button onClick={() => setCurrentTab('lessons')} className={`px-4 py-2 rounded-lg font-medium transition ${currentTab==='lessons' ? 'bg-white text-indigo-600 shadow' : 'text-white hover:bg-indigo-500'}`}>Занятия</button>
                 <button onClick={() => setCurrentTab('stats')} className={`px-4 py-2 rounded-lg font-medium transition ${currentTab==='stats' ? 'bg-white text-indigo-600 shadow' : 'text-white hover:bg-indigo-500'}`}>Статистика</button>
               </nav>
-            </div>
+          </div>
           </header>
-
+  
           <main className="container mx-auto px-4">
             {/* Ученики */}
-            {currentTab === 'students' && (
-              <div>
+          {currentTab === 'students' && (
+            <div>
                 <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-6 gap-2">
                   <input type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Поиск ученика..." className="border rounded-lg px-4 py-2 w-full md:w-1/3 shadow-sm focus:ring-2 focus:ring-indigo-300" />
                   <button onClick={() => setShowStudentModal(true)} className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg shadow transition"><PlusIcon />Добавить ученика</button>
-                </div>
+              </div>
                 {filteredStudents.length === 0 ? (
                   <div className="text-center text-gray-400 py-12">Нет учеников</div>
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {filteredStudents.map(student => (
-                      <div key={student.id} className="bg-white rounded-xl shadow p-4 flex justify-between items-center">
+                {filteredStudents.map(student => (
+                      <div key={student._id} className="bg-white rounded-xl shadow p-4 flex justify-between items-center">
                         <span className="font-semibold text-lg text-gray-800">{student.name}</span>
-                        <button onClick={() => setConfirmDelete({ type: 'student', id: student.id })} className="p-2 rounded hover:bg-red-100 text-red-500"><TrashIcon /></button>
-                      </div>
-                    ))}
+                        <button onClick={() => setConfirmDelete({ type: 'student', id: student._id })} className="p-2 rounded hover:bg-red-100 text-red-500"><TrashIcon /></button>
+                    </div>
+                ))}
                   </div>
                 )}
-              </div>
-            )}
-
+            </div>
+          )}
+  
             {/* Занятия */}
-            {currentTab === 'lessons' && (
-              <div>
+          {currentTab === 'lessons' && (
+            <div>
                 <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-6 gap-2">
                   <button onClick={() => setShowLessonModal(true)} className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg shadow transition"><PlusIcon />Добавить занятие</button>
-                </div>
+              </div>
                 {lessons.length === 0 ? (
                   <div className="text-center text-gray-400 py-12">Нет занятий</div>
                 ) : (
@@ -248,13 +268,13 @@
                           <th className="py-3 px-4 text-left">Задания</th>
                           <th className="py-3 px-4 text-left">Домашнее задание</th>
                           <th className="py-3 px-4 text-left">Действия</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {lessons.map(lesson => {
-                          const student = students.find(s => s.id === lesson.studentId);
-                          return (
-                            <tr key={lesson.id} className="even:bg-gray-50 hover:bg-indigo-50 transition">
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {lessons.map(lesson => {
+                      const student = students.find(s => s._id === lesson.studentId);
+                      return (
+                            <tr key={lesson._id} className="even:bg-gray-50 hover:bg-indigo-50 transition">
                               <td className="py-2 px-4">{student ? student.name : 'Неизвестно'}</td>
                               <td className="py-2 px-4">{lesson.date}</td>
                               <td className="py-2 px-4">{lesson.amount}</td>
@@ -262,37 +282,47 @@
                               <td className="py-2 px-4">{lesson.performance}</td>
                               <td className="py-2 px-4">{lesson.tasks}</td>
                               <td className="py-2 px-4">{lesson.homework}</td>
-                              <td className="py-2 px-4">
-                                <button onClick={() => setConfirmDelete({ type: 'lesson', id: lesson.id })} className="p-2 rounded hover:bg-red-100 text-red-500"><TrashIcon /></button>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
+                          <td className="py-2 px-4">
+                                <button onClick={() => setConfirmDelete({ type: 'lesson', id: lesson._id })} className="p-2 rounded hover:bg-red-100 text-red-500"><TrashIcon /></button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
-            )}
-
+                )}
+            </div>
+          )}
+  
             {/* Статистика */}
-            {currentTab === 'stats' && (
-              <div className="max-w-2xl mx-auto">
-                <div className="space-y-4">
-                  {['day', 'week', 'month'].map(period => {
-                    const { lessonCount, totalAmount, tax } = calculateStats(period);
+          {currentTab === 'stats' && (
+              <div className="max-w-2xl mx-auto px-2">
+                <div className="mb-4 flex flex-col sm:flex-row items-center gap-2">
+                  <label className="mr-2 font-medium">Месяц:</label>
+                  <select value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} className="border rounded px-2 py-1 w-full sm:w-auto">
+                    {months.map(month => (
+                      <option key={month} value={month}>
+                        {new Date(month + '-01').toLocaleString('ru', { month: 'long', year: 'numeric' })}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="bg-white rounded-xl shadow p-4 sm:p-6 text-base sm:text-lg">
+                  {(() => {
+                    const { lessonCount, totalAmount, tax } = calculateMonthStats(selectedMonth);
                     return (
-                      <div key={period} className="bg-white rounded-xl shadow p-6">
-                        <h3 className="text-xl font-semibold mb-2 capitalize">{period === 'day' ? 'День' : period === 'week' ? 'Неделя' : 'Месяц'}</h3>
+                      <>
+                        <h3 className="text-lg sm:text-xl font-semibold mb-2">{new Date(selectedMonth + '-01').toLocaleString('ru', { month: 'long', year: 'numeric' })}</h3>
                         <p>Количество занятий: <span className="font-bold">{lessonCount}</span></p>
                         <p>Заработано: <span className="font-bold">{totalAmount} BYN</span></p>
                         <p>Налог (4%): <span className="font-bold">{tax.toFixed(2)} BYN</span></p>
                         <p>Чистый доход: <span className="font-bold">{(totalAmount - tax).toFixed(2)} BYN</span></p>
-                      </div>
+                      </>
                     );
-                  })}
-                  <button onClick={exportToExcel} className="w-full bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg shadow transition">Экспортировать в Excel</button>
+                  })()}
                 </div>
+                <button onClick={exportToExcel} className="w-full mt-4 bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg shadow transition text-base sm:text-lg">Экспортировать в Excel</button>
               </div>
             )}
           </main>
@@ -318,7 +348,7 @@
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <select value={newLesson.studentId} onChange={e => setNewLesson({ ...newLesson, studentId: e.target.value })} className="border rounded-lg px-4 py-2 w-full focus:ring-2 focus:ring-indigo-300">
                     <option value="">Выберите ученика</option>
-                    {students.map(student => <option key={student.id} value={student.id}>{student.name}</option>)}
+                    {students.map(student => <option key={student._id} value={student._id}>{student.name}</option>)}
                   </select>
                   <input type="date" value={newLesson.date} onChange={e => setNewLesson({ ...newLesson, date: e.target.value })} className="border rounded-lg px-4 py-2 w-full focus:ring-2 focus:ring-indigo-300" />
                   <input type="number" value={newLesson.amount} onChange={e => setNewLesson({ ...newLesson, amount: e.target.value })} placeholder="Сумма оплаты (BYN)" className="border rounded-lg px-4 py-2 w-full focus:ring-2 focus:ring-indigo-300" />
@@ -352,7 +382,7 @@
         </div>
       );
     }
-
+  
     ReactDOM.render(<App />, document.getElementById('root'));
   </script>
 </body>
