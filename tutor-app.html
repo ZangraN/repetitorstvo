@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Приложение для репетитора</title>
+  <script src="https://cdn.jsdelivr.net/npm/react@18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/date-fns@2.30.0/dist/date-fns.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/uuid@9.0.0/dist/umd/uuidv4.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.20.15/babel.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+  
+    function App() {
+      const [students, setStudents] = useState([]);
+      const [lessons, setLessons] = useState([]);
+      const [currentTab, setCurrentTab] = useState('students');
+      const [newStudentName, setNewStudentName] = useState('');
+      const [newLesson, setNewLesson] = useState({
+        studentId: '',
+        date: new Date().toISOString().split('T')[0],
+        amount: '',
+        topic: '',
+        performance: '',
+        tasks: '',
+        homework: ''
+      });
+      const [searchQuery, setSearchQuery] = useState('');
+  
+      // Загрузка данных с сервера
+      useEffect(() => {
+        fetch('http://localhost:5000/api/students')
+          .then(res => {
+            if (!res.ok) throw new Error(`HTTP error! Status: ${res.status}`);
+            return res.json();
+          })
+          .then(data => {
+            console.log('Students fetched:', data);
+            setStudents(data);
+          })
+          .catch(error => console.error('Error fetching students:', error));
+        fetch('http://localhost:5000/api/lessons')
+          .then(res => {
+            if (!res.ok) throw new Error(`HTTP error! Status: ${res.status}`);
+            return res.json();
+          })
+          .then(data => {
+            console.log('Lessons fetched:', data);
+            setLessons(data);
+          })
+          .catch(error => console.error('Error fetching lessons:', error));
+      }, []);
+  
+      const addStudent = () => {
+        if (newStudentName && newStudentName.trim()) {
+          const newStudent = { id: typeof uuidv4 === 'function' ? uuidv4() : Date.now().toString(), name: newStudentName.trim() };
+          fetch('http://localhost:5000/api/students', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(newStudent),
+          })
+          .then(res => res.json())
+          .then(data => setStudents(prev => [...prev, data]));
+          setNewStudentName('');
+        }
+      };
+  
+      const deleteStudent = (studentId) => {
+        fetch(`http://localhost:5000/api/students/${studentId}`, { method: 'DELETE' })
+          .then(() => {
+            setStudents(prev => prev.filter(student => student.id !== studentId));
+            setLessons(prev => prev.filter(lesson => lesson.studentId !== studentId));
+          });
+      };
+  
+      const deleteLesson = (lessonId) => {
+        fetch(`http://localhost:5000/api/lessons/${lessonId}`, { method: 'DELETE' })
+          .then(() => setLessons(prev => prev.filter(lesson => lesson.id !== lessonId)));
+      };
+  
+      const addLesson = () => {
+        if (newLesson.studentId && newLesson.date && newLesson.amount) {
+          const newLessonEntry = { id: typeof uuidv4 === 'function' ? uuidv4() : Date.now().toString(), ...newLesson };
+          fetch('http://localhost:5000/api/lessons', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(newLessonEntry),
+          })
+          .then(res => res.json())
+          .then(data => setLessons(prev => [...prev, data]));
+          setNewLesson({
+            studentId: '',
+            date: new Date().toISOString().split('T')[0],
+            amount: '',
+            topic: '',
+            performance: '',
+            tasks: '',
+            homework: ''
+          });
+        }
+      };
+  
+      const filteredStudents = students.filter(student =>
+        student.name.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+  
+      const calculateStats = (period) => {
+        const now = new Date();
+        let startDate;
+        if (period === 'day') startDate = new Date(now.setHours(0, 0, 0, 0));
+        else if (period === 'week') startDate = new Date(now.setDate(now.getDate() - now.getDay()));
+        else startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+  
+        const periodLessons = lessons.filter(lesson => new Date(lesson.date) >= startDate);
+        const lessonCount = periodLessons.length;
+        const totalAmount = periodLessons.reduce((sum, lesson) => sum + Number(lesson.amount), 0);
+        const tax = totalAmount * 0.04;
+        return { lessonCount, totalAmount, tax };
+      };
+  
+      const exportToExcel = () => {
+        const wb = XLSX.utils.book_new();
+        const wsData = lessons.map(lesson => {
+          const student = students.find(s => s.id === lesson.studentId) || { name: 'Неизвестно' };
+          return {
+            'Ученик': student.name,
+            'Дата': lesson.date,
+            'Сумма (BYN)': lesson.amount,
+            'Тема': lesson.topic,
+            'Усвоение': lesson.performance,
+            'Задания': lesson.tasks,
+            'Домашнее задание': lesson.homework
+          };
+        });
+        const ws = XLSX.utils.json_to_sheet(wsData);
+        XLSX.utils.book_append_sheet(wb, ws, 'Занятия');
+        const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+        const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        saveAs(blob, 'tutor_lessons.xlsx');
+      };
+  
+      return (
+        <div className="container mx-auto p-4 max-w-4xl">
+          <h1 className="text-3xl font-bold text-center mb-6">Приложение для репетитора</h1>
+          <div className="flex justify-center mb-4">
+            <button className={`px-4 py-2 mr-2 rounded ${currentTab === 'students' ? 'bg-blue-500 text-white' : 'bg-gray-200'}`} onClick={() => setCurrentTab('students')}>Ученики</button>
+            <button className={`px-4 py-2 mr-2 rounded ${currentTab === 'lessons' ? 'bg-blue-500 text-white' : 'bg-gray-200'}`} onClick={() => setCurrentTab('lessons')}>Занятия</button>
+            <button className={`px-4 py-2 rounded ${currentTab === 'stats' ? 'bg-blue-500 text-white' : 'bg-gray-200'}`} onClick={() => setCurrentTab('stats')}>Статистика</button>
+          </div>
+  
+          {currentTab === 'students' && (
+            <div>
+              <h2 className="text-2xl font-semibold mb-4">Ученики</h2>
+              <div className="mb-4">
+                <input type="text" value={newStudentName} onChange={(e) => setNewStudentName(e.target.value)} placeholder="Имя ученика" className="border p-2 rounded mr-2" />
+                <button onClick={addStudent} className="bg-green-500 text-white px-4 py-2 rounded">Добавить</button>
+              </div>
+              <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Поиск ученика" className="border p-2 rounded w-full mb-4" />
+              <ul className="space-y-4">
+                {filteredStudents.map(student => (
+                  <li key={student.id} className="border p-4 rounded">
+                    <div className="flex justify-between">
+                      <span className="font-semibold">{student.name}</span>
+                      <button onClick={() => deleteStudent(student.id)} className="text-red-500 hover:text-red-700">Удалить</button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+  
+          {currentTab === 'lessons' && (
+            <div>
+              <h2 className="text-2xl font-semibold mb-4">Добавить занятие</h2>
+              <div className="space-y-4">
+                <select value={newLesson.studentId} onChange={(e) => setNewLesson({ ...newLesson, studentId: e.target.value })} className="border p-2 rounded w-full">
+                  <option value="">Выберите ученика</option>
+                  {students.map(student => <option key={student.id} value={student.id}>{student.name}</option>)}
+                </select>
+                <input type="date" value={newLesson.date} onChange={(e) => setNewLesson({ ...newLesson, date: e.target.value })} className="border p-2 rounded w-full" />
+                <input type="number" value={newLesson.amount} onChange={(e) => setNewLesson({ ...newLesson, amount: e.target.value })} placeholder="Сумма оплаты (BYN)" className="border p-2 rounded w-full" />
+                <input type="text" value={newLesson.topic} onChange={(e) => setNewLesson({ ...newLesson, topic: e.target.value })} placeholder="Тема урока" className="border p-2 rounded w-full" />
+                <input type="text" value={newLesson.performance} onChange={(e) => setNewLesson({ ...newLesson, performance: e.target.value })} placeholder="Результат усвоения" className="border p-2 rounded w-full" />
+                <input type="text" value={newLesson.tasks} onChange={(e) => setNewLesson({ ...newLesson, tasks: e.target.value })} placeholder="Подбор заданий" className="border p-2 rounded w-full" />
+                <input type="text" value={newLesson.homework} onChange={(e) => setNewLesson({ ...newLesson, homework: e.target.value })} placeholder="Домашнее задание" className="border p-2 rounded w-full" />
+                <button onClick={addLesson} className="bg-blue-500 text-white px-4 py-2 rounded w-full">Добавить занятие</button>
+              </div>
+              <h2 className="text-2xl font-semibold mt-6 mb-4">Список занятий</h2>
+              <div className="overflow-x-auto">
+                <table className="min-w-full bg-white border border-gray-200">
+                  <thead>
+                    <tr className="bg-gray-100 border-b">
+                      <th className="py-2 px-4 border-r text-left">Ученик</th>
+                      <th className="py-2 px-4 border-r text-left">Дата</th>
+                      <th className="py-2 px-4 border-r text-left">Сумма (BYN)</th>
+                      <th className="py-2 px-4 border-r text-left">Тема</th>
+                      <th className="py-2 px-4 border-r text-left">Усвоение</th>
+                      <th className="py-2 px-4 border-r text-left">Задания</th>
+                      <th className="py-2 px-4 border-r text-left">Домашнее задание</th>
+                      <th className="py-2 px-4 text-left">Действия</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {lessons.map(lesson => {
+                      const student = students.find(s => s.id === lesson.studentId);
+                      return (
+                        <tr key={lesson.id} className="border-b hover:bg-gray-50">
+                          <td className="py-2 px-4 border-r">{student ? student.name : 'Неизвестно'}</td>
+                          <td className="py-2 px-4 border-r">{lesson.date}</td>
+                          <td className="py-2 px-4 border-r">{lesson.amount}</td>
+                          <td className="py-2 px-4 border-r">{lesson.topic}</td>
+                          <td className="py-2 px-4 border-r">{lesson.performance}</td>
+                          <td className="py-2 px-4 border-r">{lesson.tasks}</td>
+                          <td className="py-2 px-4 border-r">{lesson.homework}</td>
+                          <td className="py-2 px-4">
+                            <button onClick={() => deleteLesson(lesson.id)} className="text-red-500 hover:text-red-700">Удалить</button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+  
+          {currentTab === 'stats' && (
+            <div>
+              <h2 className="text-2xl font-semibold mb-4">Статистика</h2>
+              <div className="space-y-4">
+                {['day', 'week', 'month'].map(period => {
+                  const { lessonCount, totalAmount, tax } = calculateStats(period);
+                  return (
+                    <div key={period} className="border p-4 rounded">
+                      <h3 className="text-xl font-semibold capitalize">{period === 'day' ? 'День' : period === 'week' ? 'Неделя' : 'Месяц'}</h3>
+                      <p>Количество занятий: {lessonCount}</p>
+                      <p>Заработано: {totalAmount} BYN</p>
+                      <p>Налог (4%): {tax.toFixed(2)} BYN</p>
+                      <p>Чистый доход: {(totalAmount - tax).toFixed(2)} BYN</p>
+                    </div>
+                  );
+                })}
+                <button onClick={exportToExcel} className="bg-purple-500 text-white px-4 py-2 rounded w-full">Экспортировать в Excel</button>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+  
+    ReactDOM.render(<App />, document.getElementById('root'));
+  </script>
+</body>
+</html>
