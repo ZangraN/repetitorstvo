@@ -36,7 +36,7 @@
   
       // Загрузка данных с сервера
       useEffect(() => {
-        fetch('http://localhost:5000/api/students')
+        fetch('https://repetitorstvo-utility.onrender.com/api/students')
           .then(res => {
             if (!res.ok) throw new Error(`HTTP error! Status: ${res.status}`);
             return res.json();
@@ -46,7 +46,7 @@
             setStudents(data);
           })
           .catch(error => console.error('Error fetching students:', error));
-        fetch('http://localhost:5000/api/lessons')
+        fetch('https://repetitorstvo-utility.onrender.com/api/lessons')
           .then(res => {
             if (!res.ok) throw new Error(`HTTP error! Status: ${res.status}`);
             return res.json();
@@ -66,9 +66,20 @@
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(newStudent),
           })
-          .then(res => res.json())
-          .then(data => setStudents(prev => [...prev, data]));
-          setNewStudentName('');
+          .then(res => {
+            if (!res.ok) {
+              return res.json().then(err => Promise.reject(err));
+            }
+            return res.json();
+          })
+          .then(data => {
+            setStudents(prev => [...prev, data]);
+            setNewStudentName('');
+          })
+          .catch(error => {
+            console.error('Error adding student:', error);
+            alert(error.error || 'Ошибка при добавлении ученика');
+          });
         }
       };
   
@@ -81,7 +92,7 @@
       };
   
       const deleteLesson = (lessonId) => {
-        fetch(`https://repetitorstvo-utility.onrender.com/${lessonId}`, { method: 'DELETE' })
+        fetch(`https://repetitorstvo-utility.onrender.com/api/lessons/${lessonId}`, { method: 'DELETE' })
           .then(() => setLessons(prev => prev.filter(lesson => lesson.id !== lessonId)));
       };
   
@@ -93,17 +104,30 @@
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(newLessonEntry),
           })
-          .then(res => res.json())
-          .then(data => setLessons(prev => [...prev, data]));
-          setNewLesson({
-            studentId: '',
-            date: new Date().toISOString().split('T')[0],
-            amount: '',
-            topic: '',
-            performance: '',
-            tasks: '',
-            homework: ''
+          .then(res => {
+            if (!res.ok) {
+              return res.json().then(err => Promise.reject(err));
+            }
+            return res.json();
+          })
+          .then(data => {
+            setLessons(prev => [...prev, data]);
+            setNewLesson({
+              studentId: '',
+              date: new Date().toISOString().split('T')[0],
+              amount: '',
+              topic: '',
+              performance: '',
+              tasks: '',
+              homework: ''
+            });
+          })
+          .catch(error => {
+            console.error('Error adding lesson:', error);
+            alert(error.error || 'Ошибка при добавлении занятия');
           });
+        } else {
+          alert('Пожалуйста, заполните все обязательные поля (ученик, дата, сумма)');
         }
       };
   

@@ -39,15 +39,31 @@ app.get('/api/students', async (req, res) => {
 });
 
 app.post('/api/students', async (req, res) => {
-  const student = new Student(req.body);
-  await student.save();
-  res.json(student);
+  try {
+    if (!req.body.name) {
+      return res.status(400).json({ error: 'Имя ученика обязательно' });
+    }
+    const student = new Student(req.body);
+    await student.save();
+    res.json(student);
+  } catch (error) {
+    console.error('Error creating student:', error);
+    res.status(500).json({ error: 'Ошибка при создании ученика' });
+  }
 });
 
 app.delete('/api/students/:id', async (req, res) => {
-  await Student.findOneAndDelete({ id: req.params.id });
-  await Lesson.deleteMany({ studentId: req.params.id });
-  res.json({ message: 'Student deleted' });
+  try {
+    const result = await Student.findOneAndDelete({ id: req.params.id });
+    if (!result) {
+      return res.status(404).json({ error: 'Ученик не найден' });
+    }
+    await Lesson.deleteMany({ studentId: req.params.id });
+    res.json({ message: 'Ученик удален' });
+  } catch (error) {
+    console.error('Error deleting student:', error);
+    res.status(500).json({ error: 'Ошибка при удалении ученика' });
+  }
 });
 
 app.get('/api/lessons', async (req, res) => {
@@ -56,14 +72,30 @@ app.get('/api/lessons', async (req, res) => {
 });
 
 app.post('/api/lessons', async (req, res) => {
-  const lesson = new Lesson(req.body);
-  await lesson.save();
-  res.json(lesson);
+  try {
+    if (!req.body.studentId || !req.body.date || !req.body.amount) {
+      return res.status(400).json({ error: 'Необходимо указать ученика, дату и сумму' });
+    }
+    const lesson = new Lesson(req.body);
+    await lesson.save();
+    res.json(lesson);
+  } catch (error) {
+    console.error('Error creating lesson:', error);
+    res.status(500).json({ error: 'Ошибка при создании занятия' });
+  }
 });
 
 app.delete('/api/lessons/:id', async (req, res) => {
-  await Lesson.findOneAndDelete({ id: req.params.id });
-  res.json({ message: 'Lesson deleted' });
+  try {
+    const result = await Lesson.findOneAndDelete({ id: req.params.id });
+    if (!result) {
+      return res.status(404).json({ error: 'Занятие не найдено' });
+    }
+    res.json({ message: 'Занятие удалено' });
+  } catch (error) {
+    console.error('Error deleting lesson:', error);
+    res.status(500).json({ error: 'Ошибка при удалении занятия' });
+  }
 });
 
 const PORT = process.env.PORT || 5000;
