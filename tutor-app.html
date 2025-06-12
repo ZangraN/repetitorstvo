@@ -61,7 +61,7 @@
       const addStudent = () => {
         if (newStudentName && newStudentName.trim()) {
           const newStudent = { id: typeof uuidv4 === 'function' ? uuidv4() : Date.now().toString(), name: newStudentName.trim() };
-          fetch('http://localhost:5000/api/students', {
+          fetch('https://repetitorstvo-utility.onrender.com/api/students', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(newStudent),
@@ -73,7 +73,7 @@
       };
   
       const deleteStudent = (studentId) => {
-        fetch(`http://localhost:5000/api/students/${studentId}`, { method: 'DELETE' })
+        fetch(`https://repetitorstvo-utility.onrender.com/api/students/${studentId}`, { method: 'DELETE' })
           .then(() => {
             setStudents(prev => prev.filter(student => student.id !== studentId));
             setLessons(prev => prev.filter(lesson => lesson.studentId !== studentId));
@@ -81,14 +81,14 @@
       };
   
       const deleteLesson = (lessonId) => {
-        fetch(`http://localhost:5000/api/lessons/${lessonId}`, { method: 'DELETE' })
+        fetch(`https://repetitorstvo-utility.onrender.com/${lessonId}`, { method: 'DELETE' })
           .then(() => setLessons(prev => prev.filter(lesson => lesson.id !== lessonId)));
       };
   
       const addLesson = () => {
         if (newLesson.studentId && newLesson.date && newLesson.amount) {
           const newLessonEntry = { id: typeof uuidv4 === 'function' ? uuidv4() : Date.now().toString(), ...newLesson };
-          fetch('http://localhost:5000/api/lessons', {
+          fetch('https://repetitorstvo-utility.onrender.com/api/lessons', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(newLessonEntry),
