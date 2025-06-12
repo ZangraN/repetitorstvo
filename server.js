@@ -27,7 +27,11 @@ const studentSchema = new mongoose.Schema({
 const lessonSchema = new mongoose.Schema({
   id: String,
   studentId: String,
+  studentName: String,
   date: String,
+  startTime: String,
+  endTime: String,
+  duration: String,
   amount: String,
   topic: String,
   performance: String,
