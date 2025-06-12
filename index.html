@@ -12,17 +12,44 @@
   <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.20.15/babel.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/toastify-js/src/toastify.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/toastify-js"></script>
+  <script src="https://unpkg.com/@heroicons/react/24/outline/index.js"></script>
+  <style>
+    body { background: #f3f4f6; }
+    .modal-bg { background: rgba(0,0,0,0.4); }
+  </style>
 </head>
 <body>
   <div id="root"></div>
   <script type="text/babel">
     const { useState, useEffect } = React;
-  
+    // Heroicons SVG (React не поддерживает UMD, поэтому вручную)
+    const TrashIcon = (props) => (
+      <svg {...props} fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+    );
+    const PlusIcon = (props) => (
+      <svg {...props} fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
+    );
+
+    function showToast(msg, type = 'success') {
+      Toastify({
+        text: msg,
+        duration: 3000,
+        gravity: 'top',
+        position: 'right',
+        backgroundColor: type === 'success' ? '#4f46e5' : '#ef4444',
+        stopOnFocus: true,
+      }).showToast();
+    }
+
     function App() {
       const [students, setStudents] = useState([]);
       const [lessons, setLessons] = useState([]);
       const [currentTab, setCurrentTab] = useState('students');
       const [newStudentName, setNewStudentName] = useState('');
+      const [showStudentModal, setShowStudentModal] = useState(false);
+      const [showLessonModal, setShowLessonModal] = useState(false);
       const [newLesson, setNewLesson] = useState({
         studentId: '',
         date: new Date().toISOString().split('T')[0],
@@ -33,85 +60,79 @@
         homework: ''
       });
       const [searchQuery, setSearchQuery] = useState('');
-  
-      // Загрузка данных с сервера
+      const [confirmDelete, setConfirmDelete] = useState({ type: '', id: null });
+
       useEffect(() => {
         fetch('https://repetitorstvo-utility.onrender.com/api/students')
-          .then(res => {
-            if (!res.ok) throw new Error(`HTTP error! Status: ${res.status}`);
-            return res.json();
-          })
-          .then(data => {
-            console.log('Students fetched:', data);
-            setStudents(data);
-          })
-          .catch(error => console.error('Error fetching students:', error));
+          .then(res => res.json())
+          .then(setStudents)
+          .catch(() => showToast('Ошибка загрузки учеников', 'error'));
         fetch('https://repetitorstvo-utility.onrender.com/api/lessons')
-          .then(res => {
-            if (!res.ok) throw new Error(`HTTP error! Status: ${res.status}`);
-            return res.json();
-          })
-          .then(data => {
-            console.log('Lessons fetched:', data);
-            setLessons(data);
-          })
-          .catch(error => console.error('Error fetching lessons:', error));
+          .then(res => res.json())
+          .then(setLessons)
+          .catch(() => showToast('Ошибка загрузки занятий', 'error'));
       }, []);
-  
+
       const addStudent = () => {
         if (newStudentName && newStudentName.trim()) {
-          const newStudent = { id: typeof uuidv4 === 'function' ? uuidv4() : Date.now().toString(), name: newStudentName.trim() };
+          const newStudent = { name: newStudentName.trim() };
           fetch('https://repetitorstvo-utility.onrender.com/api/students', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(newStudent),
           })
           .then(res => {
-            if (!res.ok) {
-              return res.json().then(err => Promise.reject(err));
-            }
+            if (!res.ok) return res.json().then(err => Promise.reject(err));
             return res.json();
           })
           .then(data => {
             setStudents(prev => [...prev, data]);
             setNewStudentName('');
+            setShowStudentModal(false);
+            showToast('Ученик добавлен!');
           })
           .catch(error => {
-            console.error('Error adding student:', error);
-            alert(error.error || 'Ошибка при добавлении ученика');
+            showToast(error.error || 'Ошибка при добавлении ученика', 'error');
           });
         }
       };
-  
+
       const deleteStudent = (studentId) => {
         fetch(`https://repetitorstvo-utility.onrender.com/api/students/${studentId}`, { method: 'DELETE' })
-          .then(() => {
+          .then(res => {
+            if (!res.ok) return res.json().then(err => Promise.reject(err));
             setStudents(prev => prev.filter(student => student.id !== studentId));
             setLessons(prev => prev.filter(lesson => lesson.studentId !== studentId));
-          });
+            showToast('Ученик удалён!');
+          })
+          .catch(error => showToast(error.error || 'Ошибка при удалении ученика', 'error'));
       };
-  
+
       const deleteLesson = (lessonId) => {
         fetch(`https://repetitorstvo-utility.onrender.com/api/lessons/${lessonId}`, { method: 'DELETE' })
-          .then(() => setLessons(prev => prev.filter(lesson => lesson.id !== lessonId)));
+          .then(res => {
+            if (!res.ok) return res.json().then(err => Promise.reject(err));
+            setLessons(prev => prev.filter(lesson => lesson.id !== lessonId));
+            showToast('Занятие удалено!');
+          })
+          .catch(error => showToast(error.error || 'Ошибка при удалении занятия', 'error'));
       };
-  
+
       const addLesson = () => {
         if (newLesson.studentId && newLesson.date && newLesson.amount) {
-          const newLessonEntry = { id: typeof uuidv4 === 'function' ? uuidv4() : Date.now().toString(), ...newLesson };
+          const newLessonEntry = { ...newLesson };
           fetch('https://repetitorstvo-utility.onrender.com/api/lessons', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(newLessonEntry),
           })
           .then(res => {
-            if (!res.ok) {
-              return res.json().then(err => Promise.reject(err));
-            }
+            if (!res.ok) return res.json().then(err => Promise.reject(err));
             return res.json();
           })
           .then(data => {
             setLessons(prev => [...prev, data]);
+            setShowLessonModal(false);
             setNewLesson({
               studentId: '',
               date: new Date().toISOString().split('T')[0],
@@ -121,34 +142,31 @@
               tasks: '',
               homework: ''
             });
+            showToast('Занятие добавлено!');
           })
-          .catch(error => {
-            console.error('Error adding lesson:', error);
-            alert(error.error || 'Ошибка при добавлении занятия');
-          });
+          .catch(error => showToast(error.error || 'Ошибка при добавлении занятия', 'error'));
         } else {
-          alert('Пожалуйста, заполните все обязательные поля (ученик, дата, сумма)');
+          showToast('Заполните все обязательные поля', 'error');
         }
       };
-  
+
       const filteredStudents = students.filter(student =>
         student.name.toLowerCase().includes(searchQuery.toLowerCase())
       );
-  
+
       const calculateStats = (period) => {
         const now = new Date();
         let startDate;
         if (period === 'day') startDate = new Date(now.setHours(0, 0, 0, 0));
         else if (period === 'week') startDate = new Date(now.setDate(now.getDate() - now.getDay()));
         else startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-  
         const periodLessons = lessons.filter(lesson => new Date(lesson.date) >= startDate);
         const lessonCount = periodLessons.length;
         const totalAmount = periodLessons.reduce((sum, lesson) => sum + Number(lesson.amount), 0);
         const tax = totalAmount * 0.04;
         return { lessonCount, totalAmount, tax };
       };
-  
+
       const exportToExcel = () => {
         const wb = XLSX.utils.book_new();
         const wsData = lessons.map(lesson => {
@@ -168,117 +186,173 @@
         const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
         const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
         saveAs(blob, 'tutor_lessons.xlsx');
+        showToast('Экспортировано в Excel!');
       };
-  
+
+      // --- UI ---
       return (
-        <div className="container mx-auto p-4 max-w-4xl">
-          <h1 className="text-3xl font-bold text-center mb-6">Приложение для репетитора</h1>
-          <div className="flex justify-center mb-4">
-            <button className={`px-4 py-2 mr-2 rounded ${currentTab === 'students' ? 'bg-blue-500 text-white' : 'bg-gray-200'}`} onClick={() => setCurrentTab('students')}>Ученики</button>
-            <button className={`px-4 py-2 mr-2 rounded ${currentTab === 'lessons' ? 'bg-blue-500 text-white' : 'bg-gray-200'}`} onClick={() => setCurrentTab('lessons')}>Занятия</button>
-            <button className={`px-4 py-2 rounded ${currentTab === 'stats' ? 'bg-blue-500 text-white' : 'bg-gray-200'}`} onClick={() => setCurrentTab('stats')}>Статистика</button>
-          </div>
-  
-          {currentTab === 'students' && (
-            <div>
-              <h2 className="text-2xl font-semibold mb-4">Ученики</h2>
-              <div className="mb-4">
-                <input type="text" value={newStudentName} onChange={(e) => setNewStudentName(e.target.value)} placeholder="Имя ученика" className="border p-2 rounded mr-2" />
-                <button onClick={addStudent} className="bg-green-500 text-white px-4 py-2 rounded">Добавить</button>
-              </div>
-              <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Поиск ученика" className="border p-2 rounded w-full mb-4" />
-              <ul className="space-y-4">
-                {filteredStudents.map(student => (
-                  <li key={student.id} className="border p-4 rounded">
-                    <div className="flex justify-between">
-                      <span className="font-semibold">{student.name}</span>
-                      <button onClick={() => deleteStudent(student.id)} className="text-red-500 hover:text-red-700">Удалить</button>
-                    </div>
-                  </li>
-                ))}
-              </ul>
+        <div className="min-h-screen bg-gray-100">
+          {/* Top Bar */}
+          <header className="bg-indigo-600 shadow py-4 mb-6">
+            <div className="container mx-auto px-4 flex justify-between items-center">
+              <h1 className="text-2xl md:text-3xl font-bold text-white tracking-wide">Приложение для репетитора</h1>
+              <nav className="flex space-x-2">
+                <button onClick={() => setCurrentTab('students')} className={`px-4 py-2 rounded-lg font-medium transition ${currentTab==='students' ? 'bg-white text-indigo-600 shadow' : 'text-white hover:bg-indigo-500'}`}>Ученики</button>
+                <button onClick={() => setCurrentTab('lessons')} className={`px-4 py-2 rounded-lg font-medium transition ${currentTab==='lessons' ? 'bg-white text-indigo-600 shadow' : 'text-white hover:bg-indigo-500'}`}>Занятия</button>
+                <button onClick={() => setCurrentTab('stats')} className={`px-4 py-2 rounded-lg font-medium transition ${currentTab==='stats' ? 'bg-white text-indigo-600 shadow' : 'text-white hover:bg-indigo-500'}`}>Статистика</button>
+              </nav>
             </div>
-          )}
-  
-          {currentTab === 'lessons' && (
-            <div>
-              <h2 className="text-2xl font-semibold mb-4">Добавить занятие</h2>
-              <div className="space-y-4">
-                <select value={newLesson.studentId} onChange={(e) => setNewLesson({ ...newLesson, studentId: e.target.value })} className="border p-2 rounded w-full">
-                  <option value="">Выберите ученика</option>
-                  {students.map(student => <option key={student.id} value={student.id}>{student.name}</option>)}
-                </select>
-                <input type="date" value={newLesson.date} onChange={(e) => setNewLesson({ ...newLesson, date: e.target.value })} className="border p-2 rounded w-full" />
-                <input type="number" value={newLesson.amount} onChange={(e) => setNewLesson({ ...newLesson, amount: e.target.value })} placeholder="Сумма оплаты (BYN)" className="border p-2 rounded w-full" />
-                <input type="text" value={newLesson.topic} onChange={(e) => setNewLesson({ ...newLesson, topic: e.target.value })} placeholder="Тема урока" className="border p-2 rounded w-full" />
-                <input type="text" value={newLesson.performance} onChange={(e) => setNewLesson({ ...newLesson, performance: e.target.value })} placeholder="Результат усвоения" className="border p-2 rounded w-full" />
-                <input type="text" value={newLesson.tasks} onChange={(e) => setNewLesson({ ...newLesson, tasks: e.target.value })} placeholder="Подбор заданий" className="border p-2 rounded w-full" />
-                <input type="text" value={newLesson.homework} onChange={(e) => setNewLesson({ ...newLesson, homework: e.target.value })} placeholder="Домашнее задание" className="border p-2 rounded w-full" />
-                <button onClick={addLesson} className="bg-blue-500 text-white px-4 py-2 rounded w-full">Добавить занятие</button>
+          </header>
+
+          <main className="container mx-auto px-4">
+            {/* Ученики */}
+            {currentTab === 'students' && (
+              <div>
+                <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-6 gap-2">
+                  <input type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Поиск ученика..." className="border rounded-lg px-4 py-2 w-full md:w-1/3 shadow-sm focus:ring-2 focus:ring-indigo-300" />
+                  <button onClick={() => setShowStudentModal(true)} className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg shadow transition"><PlusIcon />Добавить ученика</button>
+                </div>
+                {filteredStudents.length === 0 ? (
+                  <div className="text-center text-gray-400 py-12">Нет учеников</div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {filteredStudents.map(student => (
+                      <div key={student.id} className="bg-white rounded-xl shadow p-4 flex justify-between items-center">
+                        <span className="font-semibold text-lg text-gray-800">{student.name}</span>
+                        <button onClick={() => setConfirmDelete({ type: 'student', id: student.id })} className="p-2 rounded hover:bg-red-100 text-red-500"><TrashIcon /></button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
-              <h2 className="text-2xl font-semibold mt-6 mb-4">Список занятий</h2>
-              <div className="overflow-x-auto">
-                <table className="min-w-full bg-white border border-gray-200">
-                  <thead>
-                    <tr className="bg-gray-100 border-b">
-                      <th className="py-2 px-4 border-r text-left">Ученик</th>
-                      <th className="py-2 px-4 border-r text-left">Дата</th>
-                      <th className="py-2 px-4 border-r text-left">Сумма (BYN)</th>
-                      <th className="py-2 px-4 border-r text-left">Тема</th>
-                      <th className="py-2 px-4 border-r text-left">Усвоение</th>
-                      <th className="py-2 px-4 border-r text-left">Задания</th>
-                      <th className="py-2 px-4 border-r text-left">Домашнее задание</th>
-                      <th className="py-2 px-4 text-left">Действия</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {lessons.map(lesson => {
-                      const student = students.find(s => s.id === lesson.studentId);
-                      return (
-                        <tr key={lesson.id} className="border-b hover:bg-gray-50">
-                          <td className="py-2 px-4 border-r">{student ? student.name : 'Неизвестно'}</td>
-                          <td className="py-2 px-4 border-r">{lesson.date}</td>
-                          <td className="py-2 px-4 border-r">{lesson.amount}</td>
-                          <td className="py-2 px-4 border-r">{lesson.topic}</td>
-                          <td className="py-2 px-4 border-r">{lesson.performance}</td>
-                          <td className="py-2 px-4 border-r">{lesson.tasks}</td>
-                          <td className="py-2 px-4 border-r">{lesson.homework}</td>
-                          <td className="py-2 px-4">
-                            <button onClick={() => deleteLesson(lesson.id)} className="text-red-500 hover:text-red-700">Удалить</button>
-                          </td>
+            )}
+
+            {/* Занятия */}
+            {currentTab === 'lessons' && (
+              <div>
+                <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-6 gap-2">
+                  <button onClick={() => setShowLessonModal(true)} className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg shadow transition"><PlusIcon />Добавить занятие</button>
+                </div>
+                {lessons.length === 0 ? (
+                  <div className="text-center text-gray-400 py-12">Нет занятий</div>
+                ) : (
+                  <div className="overflow-x-auto rounded-xl shadow bg-white">
+                    <table className="min-w-full text-sm">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="py-3 px-4 text-left">Ученик</th>
+                          <th className="py-3 px-4 text-left">Дата</th>
+                          <th className="py-3 px-4 text-left">Сумма (BYN)</th>
+                          <th className="py-3 px-4 text-left">Тема</th>
+                          <th className="py-3 px-4 text-left">Усвоение</th>
+                          <th className="py-3 px-4 text-left">Задания</th>
+                          <th className="py-3 px-4 text-left">Домашнее задание</th>
+                          <th className="py-3 px-4 text-left">Действия</th>
                         </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                      </thead>
+                      <tbody>
+                        {lessons.map(lesson => {
+                          const student = students.find(s => s.id === lesson.studentId);
+                          return (
+                            <tr key={lesson.id} className="even:bg-gray-50 hover:bg-indigo-50 transition">
+                              <td className="py-2 px-4">{student ? student.name : 'Неизвестно'}</td>
+                              <td className="py-2 px-4">{lesson.date}</td>
+                              <td className="py-2 px-4">{lesson.amount}</td>
+                              <td className="py-2 px-4">{lesson.topic}</td>
+                              <td className="py-2 px-4">{lesson.performance}</td>
+                              <td className="py-2 px-4">{lesson.tasks}</td>
+                              <td className="py-2 px-4">{lesson.homework}</td>
+                              <td className="py-2 px-4">
+                                <button onClick={() => setConfirmDelete({ type: 'lesson', id: lesson.id })} className="p-2 rounded hover:bg-red-100 text-red-500"><TrashIcon /></button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Статистика */}
+            {currentTab === 'stats' && (
+              <div className="max-w-2xl mx-auto">
+                <div className="space-y-4">
+                  {['day', 'week', 'month'].map(period => {
+                    const { lessonCount, totalAmount, tax } = calculateStats(period);
+                    return (
+                      <div key={period} className="bg-white rounded-xl shadow p-6">
+                        <h3 className="text-xl font-semibold mb-2 capitalize">{period === 'day' ? 'День' : period === 'week' ? 'Неделя' : 'Месяц'}</h3>
+                        <p>Количество занятий: <span className="font-bold">{lessonCount}</span></p>
+                        <p>Заработано: <span className="font-bold">{totalAmount} BYN</span></p>
+                        <p>Налог (4%): <span className="font-bold">{tax.toFixed(2)} BYN</span></p>
+                        <p>Чистый доход: <span className="font-bold">{(totalAmount - tax).toFixed(2)} BYN</span></p>
+                      </div>
+                    );
+                  })}
+                  <button onClick={exportToExcel} className="w-full bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg shadow transition">Экспортировать в Excel</button>
+                </div>
+              </div>
+            )}
+          </main>
+
+          {/* Модальное окно добавления ученика */}
+          {showStudentModal && (
+            <div className="fixed inset-0 flex items-center justify-center z-50 modal-bg">
+              <div className="bg-white rounded-xl shadow-lg p-8 w-full max-w-sm relative">
+                <button onClick={() => setShowStudentModal(false)} className="absolute top-2 right-2 text-gray-400 hover:text-gray-600">✕</button>
+                <h2 className="text-xl font-bold mb-4">Добавить ученика</h2>
+                <input type="text" value={newStudentName} onChange={e => setNewStudentName(e.target.value)} placeholder="Имя ученика" className="border rounded-lg px-4 py-2 w-full mb-4 focus:ring-2 focus:ring-indigo-300" />
+                <button onClick={addStudent} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg shadow transition">Добавить</button>
               </div>
             </div>
           )}
-  
-          {currentTab === 'stats' && (
-            <div>
-              <h2 className="text-2xl font-semibold mb-4">Статистика</h2>
-              <div className="space-y-4">
-                {['day', 'week', 'month'].map(period => {
-                  const { lessonCount, totalAmount, tax } = calculateStats(period);
-                  return (
-                    <div key={period} className="border p-4 rounded">
-                      <h3 className="text-xl font-semibold capitalize">{period === 'day' ? 'День' : period === 'week' ? 'Неделя' : 'Месяц'}</h3>
-                      <p>Количество занятий: {lessonCount}</p>
-                      <p>Заработано: {totalAmount} BYN</p>
-                      <p>Налог (4%): {tax.toFixed(2)} BYN</p>
-                      <p>Чистый доход: {(totalAmount - tax).toFixed(2)} BYN</p>
-                    </div>
-                  );
-                })}
-                <button onClick={exportToExcel} className="bg-purple-500 text-white px-4 py-2 rounded w-full">Экспортировать в Excel</button>
+
+          {/* Модальное окно добавления занятия */}
+          {showLessonModal && (
+            <div className="fixed inset-0 flex items-center justify-center z-50 modal-bg">
+              <div className="bg-white rounded-xl shadow-lg p-8 w-full max-w-lg relative">
+                <button onClick={() => setShowLessonModal(false)} className="absolute top-2 right-2 text-gray-400 hover:text-gray-600">✕</button>
+                <h2 className="text-xl font-bold mb-4">Добавить занятие</h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <select value={newLesson.studentId} onChange={e => setNewLesson({ ...newLesson, studentId: e.target.value })} className="border rounded-lg px-4 py-2 w-full focus:ring-2 focus:ring-indigo-300">
+                    <option value="">Выберите ученика</option>
+                    {students.map(student => <option key={student.id} value={student.id}>{student.name}</option>)}
+                  </select>
+                  <input type="date" value={newLesson.date} onChange={e => setNewLesson({ ...newLesson, date: e.target.value })} className="border rounded-lg px-4 py-2 w-full focus:ring-2 focus:ring-indigo-300" />
+                  <input type="number" value={newLesson.amount} onChange={e => setNewLesson({ ...newLesson, amount: e.target.value })} placeholder="Сумма оплаты (BYN)" className="border rounded-lg px-4 py-2 w-full focus:ring-2 focus:ring-indigo-300" />
+                  <input type="text" value={newLesson.topic} onChange={e => setNewLesson({ ...newLesson, topic: e.target.value })} placeholder="Тема урока" className="border rounded-lg px-4 py-2 w-full focus:ring-2 focus:ring-indigo-300" />
+                  <input type="text" value={newLesson.performance} onChange={e => setNewLesson({ ...newLesson, performance: e.target.value })} placeholder="Результат усвоения" className="border rounded-lg px-4 py-2 w-full focus:ring-2 focus:ring-indigo-300" />
+                  <input type="text" value={newLesson.tasks} onChange={e => setNewLesson({ ...newLesson, tasks: e.target.value })} placeholder="Подбор заданий" className="border rounded-lg px-4 py-2 w-full focus:ring-2 focus:ring-indigo-300" />
+                  <input type="text" value={newLesson.homework} onChange={e => setNewLesson({ ...newLesson, homework: e.target.value })} placeholder="Домашнее задание" className="border rounded-lg px-4 py-2 w-full focus:ring-2 focus:ring-indigo-300" />
+                </div>
+                <button onClick={addLesson} className="w-full mt-6 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg shadow transition">Добавить занятие</button>
+              </div>
+            </div>
+          )}
+
+          {/* Модальное окно подтверждения удаления */}
+          {confirmDelete.id && (
+            <div className="fixed inset-0 flex items-center justify-center z-50 modal-bg">
+              <div className="bg-white rounded-xl shadow-lg p-8 w-full max-w-sm relative text-center">
+                <h2 className="text-xl font-bold mb-4">Вы уверены?</h2>
+                <p className="mb-6">{confirmDelete.type === 'student' ? 'Удалить ученика и все его занятия?' : 'Удалить занятие?'}</p>
+                <div className="flex gap-4 justify-center">
+                  <button onClick={() => {
+                    if (confirmDelete.type === 'student') deleteStudent(confirmDelete.id);
+                    else deleteLesson(confirmDelete.id);
+                    setConfirmDelete({ type: '', id: null });
+                  }} className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg shadow">Удалить</button>
+                  <button onClick={() => setConfirmDelete({ type: '', id: null })} className="bg-gray-200 hover:bg-gray-300 text-gray-700 px-4 py-2 rounded-lg shadow">Отмена</button>
+                </div>
               </div>
             </div>
           )}
         </div>
       );
     }
-  
+
     ReactDOM.render(<App />, document.getElementById('root'));
   </script>
 </body>
