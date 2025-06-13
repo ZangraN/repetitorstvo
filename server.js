@@ -136,15 +136,50 @@ app.delete('/api/lessons/:id', async (req, res) => {
 
 // Эндпоинт для просмотра логов с авторизацией по паролю
 app.get('/api/visits', async (req, res) => {
-  const ADMIN_PASS = 'boy112232'; // Задайте свой пароль здесь
+  const ADMIN_PASS = 'boy112232';
   if (req.query.adminpass !== ADMIN_PASS) {
-    return res.status(403).json({ error: 'Доступ запрещён' });
+    return res.status(403).send('Доступ запрещён');
   }
   try {
     const visits = await Visit.find().sort({ date: -1 }).limit(100);
-    res.json(visits);
+    let html = `
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <title>Логи посещений</title>
+        <style>
+          table { border-collapse: collapse; width: 100%; font-family: monospace; font-size: 14px; }
+          th, td { border: 1px solid #ccc; padding: 6px 10px; text-align: left; vertical-align: top; word-break: break-word; }
+          th { background: #f3f3f3; }
+          tr:nth-child(even) { background: #fafafa; }
+        </style>
+      </head>
+      <body>
+        <h2>Логи посещений (последние 100)</h2>
+        <table>
+          <tr>
+            <th>Дата и время</th>
+            <th>IP-адрес</th>
+            <th>Браузер</th>
+            <th>URL</th>
+            <th>Метод</th>
+          </tr>
+          ${visits.map(v => `
+            <tr>
+              <td>${new Date(v.date).toLocaleString('ru-RU', { timeZone: 'Europe/Minsk', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })}</td>
+              <td>${v.ip}</td>
+              <td>${v.userAgent}</td>
+              <td>${v.url}</td>
+              <td>${v.method}</td>
+            </tr>
+          `).join('')}
+        </table>
+      </body>
+      </html>
+    `;
+    res.send(html);
   } catch (e) {
-    res.status(500).json({ error: 'Ошибка получения логов' });
+    res.status(500).send('Ошибка получения логов');
   }
 });
 
