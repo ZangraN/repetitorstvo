@@ -39,8 +39,34 @@ const lessonSchema = new mongoose.Schema({
   homework: String,
 });
 
+const visitSchema = new mongoose.Schema({
+  ip: String,
+  userAgent: String,
+  url: String,
+  method: String,
+  date: String
+});
+
 const Student = mongoose.model('Student', studentSchema);
 const Lesson = mongoose.model('Lesson', lessonSchema);
+const Visit = mongoose.model('Visit', visitSchema);
+
+// Middleware для логирования визитов
+app.use(async (req, res, next) => {
+  const log = {
+    ip: req.headers['x-forwarded-for'] || req.connection.remoteAddress,
+    userAgent: req.headers['user-agent'],
+    url: req.originalUrl,
+    method: req.method,
+    date: new Date().toISOString()
+  };
+  try {
+    await Visit.create(log);
+  } catch (e) {
+    console.error('Ошибка логирования визита:', e);
+  }
+  next();
+});
 
 // API endpoints
 app.get('/api/students', async (req, res) => {
@@ -105,6 +131,20 @@ app.delete('/api/lessons/:id', async (req, res) => {
   } catch (error) {
     console.error('Error deleting lesson:', error);
     res.status(500).json({ error: 'Ошибка при удалении занятия' });
+  }
+});
+
+// Эндпоинт для просмотра логов с авторизацией по паролю
+app.get('/api/visits', async (req, res) => {
+  const ADMIN_PASS = 'boy112232'; // Задайте свой пароль здесь
+  if (req.query.adminpass !== ADMIN_PASS) {
+    return res.status(403).json({ error: 'Доступ запрещён' });
+  }
+  try {
+    const visits = await Visit.find().sort({ date: -1 }).limit(100);
+    res.json(visits);
+  } catch (e) {
+    res.status(500).json({ error: 'Ошибка получения логов' });
   }
 });
 
